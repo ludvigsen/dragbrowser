@@ -1,0 +1,6 @@
+<h3>Files</h3>
+<ul>
+{{#each dirs}}
+    <li data-id="{{value}}" draggable="true" data-downloadurl="application/octet-stream:{{name}}:{{url}}">{{name}} {{type}}</li>
+{{/each}}
+</ul>

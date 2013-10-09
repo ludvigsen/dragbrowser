@@ -1,0 +1,7 @@
+dist
+log
+users.json
+*.swp
+.ghci
+cabal.sandbox.config
+.cabal-sandbox
