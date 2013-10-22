@@ -1,4 +1,8 @@
- .table{
+.login{
+    margin-left: 35%;
+    width: 30%
+}
+.table{
      display: table;
  }
 .row  {

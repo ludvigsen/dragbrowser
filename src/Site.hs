@@ -75,12 +75,23 @@ handleNewUser :: Handler App (AuthManager App) ()
 handleNewUser = method GET handleForm <|> method POST handleFormSubmit
   where
     handleForm = render "new_user"
-    handleFormSubmit = registerUser "login" "password" >> redirect "/"
+    handleFormSubmit = do
+        currentDirectory <- liftIO $ getCurrentDirectory
+        liftIO $ putStrLn ("form submit!" ++ currentDirectory)
+        fileExists <- liftIO $ doesFileExist "users.json"
+        if fileExists then 
+            do
+                registerUser "login" "password" >> redirect "/"
+            else
+                return ()
+        return ()
+        --liftIO $ putStrLn "fileExists" else liftIO $ putStrLn "fileDoesNotExist"
+        --return registerUser "login" "password" >> redirect "/"
 
 dotDir ('/':'.':[])     = True 
 dotDir ('/':'.':'.':[]) = True 
-dotDir (x:[])           = False 
-dotDir (x:xs)           = dotDir xs
+dotDir (_:[])           = False 
+dotDir (_:xs)           = dotDir xs
 
 createOneObject x t =  do
     dir <- doesDirectoryExist x 
@@ -171,7 +182,7 @@ routes :: [(ByteString, Handler App App ())]
 routes = [ ("/login",    with auth handleLoginSubmit)
          , ("/logout",   with auth handleLogout)
          , ("/upload",   with auth handleFiles)
-         --, ("/new_user", with auth handleNewUser)
+         , ("/new_user", with auth handleNewUser)
          , ("/api/:path", with auth handleApi)
          , ("/download/:path",  with auth handleDownload)
          , ("/delete/:path",  with auth handleDelete)
