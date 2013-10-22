@@ -35,6 +35,11 @@ import Snap.Extras.JSON
 import qualified Data.Enumerator.List as EL
 import Snap.Util.FileUploads
 import Control.Monad
+import qualified Control.Exception as C
+import System.IO.Error
+import Data.String.Utils
+import System.Cmd
+import System.Exit
 import           Prelude              as Import hiding (head, init, last,
                                                  readFile, tail, writeFile)
 
@@ -77,31 +82,74 @@ dotDir ('/':'.':'.':[]) = True
 dotDir (x:[])           = False 
 dotDir (x:xs)           = dotDir xs
 
-createOneObject x = do
+createOneObject x t =  do
     dir <- doesDirectoryExist x 
-    return $ object [("name", String $ last $ T.splitOn (T.pack "/") (T.pack x)), ("value", String (T.pack x)), ("type", String (T.pack $ dirType dir))] 
-	where dirType b = if b then "directory" else "file"
+    return $ object [("name", String $ last $ T.splitOn (T.pack "/") (T.pack x)), ("value", String (T.pack x)), ("type", String (T.pack t))] 
 
-createJson :: [FilePath] -> IO Array 
-createJson (x:[]) = do 
-        obj <- createOneObject x
-        return $ V.singleton $ obj
-createJson (x:xs) | dotDir x  = createJson xs
-                  | otherwise = do
-                  obj <- createOneObject x
-                  rest <- createJson xs 
-                  return $ obj `V.cons` rest
+createJson :: [FilePath] -> String -> IO Array 
+createJson [] t     = return $ V.fromList []
+createJson (x:[]) t = do 
+        putStrLn $ x ++ t
+        obj <- createOneObject x t
+        return $ V.singleton obj
+createJson (x:xs) t | dotDir x  = createJson xs t
+                    | otherwise = do
+                        obj <- createOneObject x t
+                        rest <- createJson xs t
+                        return $ obj `V.cons` rest
 
+decodedParam p = fromMaybe "" <$> getParam p
+
+handleDelete :: Handler App (AuthManager App) ()
+handleDelete = do
+    path <- decodedParam "path"
+    liftIO (removeFile (B.toString path)) 
+
+handleMove :: Handler App (AuthManager App) ()
+handleMove = do
+    from <- decodedParam "from"
+    to <- decodedParam "to"
+    fileExists <- liftIO $ doesFileExist (B.toString from)
+    dirExists <- liftIO $ doesDirectoryExist (B.toString from)
+    if dirExists then
+        do liftIO (renameDirectory (B.toString from) (B.toString to))
+        else do return ()
+    if fileExists then 
+        do liftIO (renameFile (B.toString from) (B.toString to))
+        else do return ()
+
+
+-- REPLACE WITH SYSTEM INDEPENDENT WAY OF DOING THIS!!
+copyDir ::  FilePath -> FilePath -> IO ()
+copyDir src dest = do
+     system $ "cp -r " ++ src ++ " " ++ dest
+     return ()
+
+handleCopy :: Handler App (AuthManager App) ()
+handleCopy = do
+    from <- decodedParam "from"
+    to <- decodedParam "to"
+    fileExists <- liftIO $ doesFileExist (B.toString from)
+    dirExists <- liftIO $ doesDirectoryExist (B.toString from)
+    if dirExists then
+        do liftIO (copyDir (B.toString from) (B.toString to))
+        else do return ()
+    if fileExists then 
+        do liftIO (copyFile (B.toString from) (B.toString to))
+        else do return ()
 
 handleApi :: Handler App (AuthManager App) ()
 handleApi = do
     path <- decodedParam "path"
+    showHidden <- decodedParam "showHidden"
     dir' <- liftIO $ getDirectoryContents $ B.toString path
-    dir <- return $ map (((B.toString path)++"/")++) dir'
-    json <- liftIO $ createJson dir 
-    obj <- liftIO $ createOneObject ((B.toString path) ++ "/..")
-    writeJSON (obj `V.cons` json)
-  where decodedParam p = fromMaybe "" <$> getParam p
+    dir <- return $ map (((B.toString path)++"/")++) (sort dir')
+    files <- liftIO $ filterM doesFileExist dir
+    dirs <- liftIO $ filterM doesDirectoryExist dir
+    dirJson <- liftIO $ createJson dirs "directory"
+    fileJson <- liftIO $ createJson files "file"
+    obj <- liftIO $ createOneObject ((B.toString path) ++ "/..") "up"
+    writeJSON $ (obj `V.cons` dirJson) V.++ fileJson
 
 handleFiles :: Handler App (AuthManager App) ()
 handleFiles = do
@@ -111,13 +159,11 @@ handleFiles = do
   path <- decodedParam "path"
   liftIO $ BS.writeFile (B.toString path) file
   return ()
- where decodedParam p = fromMaybe "" <$> getParam p
 
 handleDownload :: Handler App (AuthManager App) ()
 handleDownload = do
     path <- decodedParam "path"
     serveFile (B.toString path)
-  where decodedParam p = fromMaybe "" <$> getParam p
 
 ------------------------------------------------------------------------------
 -- | The application's routes.
@@ -128,6 +174,9 @@ routes = [ ("/login",    with auth handleLoginSubmit)
          --, ("/new_user", with auth handleNewUser)
          , ("/api/:path", with auth handleApi)
          , ("/download/:path",  with auth handleDownload)
+         , ("/delete/:path",  with auth handleDelete)
+         , ("/move/:from/:to",  with auth handleMove)
+         , ("/copy/:from/:to",  with auth handleCopy)
          , ("",          serveDirectory "static")
          ]
 

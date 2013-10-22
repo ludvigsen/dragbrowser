@@ -3,7 +3,7 @@ module.exports = function(grunt){
         handlebars: {
             compile: {
                 options: {
-                    namespace: false,
+                    namespace: "main",
                     amd: true
                 },
                 files: {

@@ -40,7 +40,9 @@ Executable dragbrowser
     transformers,
     snap-extras,
     utf8-string,
-    enumerator
+    enumerator,
+    MissingH,
+    process
 
   if flag(old-base)
     build-depends:

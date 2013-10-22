@@ -9,9 +9,14 @@
 
     <p>Congrats!  You're logged in as '<loggedInUser/>'</p>
 -->
-    <div id="main" />
     <p><a href="/logout">Logout</a></p>
+    <div id="main" />
 
+    <div id="hiddenFooter">
+        <div id="progressBar" class="progress-bar" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
+            <span class="sr-only"></span>
+        </div>
+    </div>
   </ifLoggedIn>
 
   <ifLoggedOut>

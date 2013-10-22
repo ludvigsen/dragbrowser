@@ -1,6 +1,13 @@
 <h3>Files</h3>
-<ul>
+<ul class="list-group">
 {{#each dirs}}
-    <li data-id="{{value}}" draggable="true" data-downloadurl="application/octet-stream:{{name}}:{{url}}">{{name}} {{type}}</li>
+    <li data-id="{{value}}" draggable="true" data-downloadurl="application/octet-stream:{{name}}:{{url}}" class="list-group-item">
+        {{#if directory }}
+            <span class="glyphicon glyphicon-folder-close"></span>
+        {{else}}
+            <span class="glyphicon glyphicon-file"></span>
+        {{/if}}
+        {{name}}
+    </li>
 {{/each}}
 </ul>
