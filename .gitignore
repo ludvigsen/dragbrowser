@@ -5,3 +5,4 @@ users.json
 .ghci
 cabal.sandbox.config
 .cabal-sandbox
+site_key.txt
