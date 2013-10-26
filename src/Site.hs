@@ -38,8 +38,10 @@ import Control.Monad
 import qualified Control.Exception as C
 import System.IO.Error
 import Data.String.Utils
+import Data.Monoid
 import System.Cmd
 import System.Exit
+import qualified Text.XmlHtml as X
 import           Prelude              as Import hiding (head, init, last,
                                                  readFile, tail, writeFile)
 
@@ -52,6 +54,33 @@ handleLogin authError = heistLocal (I.bindSplices errs) $ render "login"
     errs = maybe noSplices splice authError
     splice err = "loginError" ## I.textSplice err
 
+
+-- | A splice that can be used to check for existence of a user. If a user is
+-- -- present, this will run the contents of the node.
+-- --
+-- -- > <ifLoggedIn> Show this when there is a logged in user </ifLoggedIn>
+ifNoUserFile :: SnapletLens b (AuthManager b) -> SnapletISplice b
+ifNoUserFile auth = do
+    fileExists <- liftIO $ doesFileExist "users.json"
+    if fileExists then
+        liftIO $ putStrLn "file exists"
+        else
+            liftIO $ putStrLn "file does not exist"
+    case fileExists of
+        True -> getParamNode >>= return . X.childNodes
+        False -> return []
+
+handleIndex :: Handler App (AuthManager App) ()
+handleIndex = do
+    fileExists <- liftIO $ doesFileExist "users.json"
+    if fileExists then
+        liftIO $ putStrLn "file exists"
+        else
+            liftIO $ putStrLn "file does not exist"
+    case fileExists of
+        False -> render "first_user" --getParamNode >>= return . X.childNodes
+        True -> render "index" 
+    --heistLocal (I.bindSplice "ifNoUserCreated" ifNoUserCreated) $ render "index"
 
 ------------------------------------------------------------------------------
 -- | Handle login submit
@@ -76,17 +105,13 @@ handleNewUser = method GET handleForm <|> method POST handleFormSubmit
   where
     handleForm = render "new_user"
     handleFormSubmit = do
-        currentDirectory <- liftIO $ getCurrentDirectory
-        liftIO $ putStrLn ("form submit!" ++ currentDirectory)
         fileExists <- liftIO $ doesFileExist "users.json"
-        if fileExists then 
+        loggedIn <- isLoggedIn
+        if not fileExists || loggedIn then 
             do
                 registerUser "login" "password" >> redirect "/"
             else
-                return ()
-        return ()
-        --liftIO $ putStrLn "fileExists" else liftIO $ putStrLn "fileDoesNotExist"
-        --return registerUser "login" "password" >> redirect "/"
+                redirect "/"
 
 dotDir ('/':'.':[])     = True 
 dotDir ('/':'.':'.':[]) = True 
@@ -111,12 +136,12 @@ createJson (x:xs) t | dotDir x  = createJson xs t
 
 decodedParam p = fromMaybe "" <$> getParam p
 
-handleDelete :: Handler App (AuthManager App) ()
+handleDelete :: Handler App App ()
 handleDelete = do
     path <- decodedParam "path"
     liftIO (removeFile (B.toString path)) 
 
-handleMove :: Handler App (AuthManager App) ()
+handleMove :: Handler App App ()
 handleMove = do
     from <- decodedParam "from"
     to <- decodedParam "to"
@@ -136,7 +161,7 @@ copyDir src dest = do
      system $ "cp -r " ++ src ++ " " ++ dest
      return ()
 
-handleCopy :: Handler App (AuthManager App) ()
+handleCopy :: Handler App App ()
 handleCopy = do
     from <- decodedParam "from"
     to <- decodedParam "to"
@@ -149,7 +174,7 @@ handleCopy = do
         do liftIO (copyFile (B.toString from) (B.toString to))
         else do return ()
 
-handleApi :: Handler App (AuthManager App) ()
+handleApi :: Handler App App ()
 handleApi = do
     path <- decodedParam "path"
     showHidden <- decodedParam "showHidden"
@@ -162,7 +187,9 @@ handleApi = do
     obj <- liftIO $ createOneObject ((B.toString path) ++ "/..") "up"
     writeJSON $ (obj `V.cons` dirJson) V.++ fileJson
 
-handleFiles :: Handler App (AuthManager App) ()
+
+--handleFiles = requireUser handleFiles' 
+handleFiles :: Handler App App ()
 handleFiles = do
   [file] <- handleMultipart defaultUploadPolicy $ \part -> do
       content <-  liftM BS.concat EL.consume
@@ -171,7 +198,17 @@ handleFiles = do
   liftIO $ BS.writeFile (B.toString path) file
   return ()
 
-handleDownload :: Handler App (AuthManager App) ()
+--withUser :: (AuthUser -> Handler App App ()) -> Handler App App () 
+--withUser action = do 
+    --with auth currentUser >>= go 
+  --where 
+    --go Nothing = return () 
+    --go (Just u) = maybe (return ()) (\uid -> action (AuthUser (read . T.unpack $ unUid uid) (userLogin u))) (userId u) 
+
+handleUnAuthorized :: Handler App App ()
+handleUnAuthorized = redirect "/"
+
+handleDownload :: Handler App App ()
 handleDownload = do
     path <- decodedParam "path"
     serveFile (B.toString path)
@@ -181,15 +218,16 @@ handleDownload = do
 routes :: [(ByteString, Handler App App ())]
 routes = [ ("/login",    with auth handleLoginSubmit)
          , ("/logout",   with auth handleLogout)
-         , ("/upload",   with auth handleFiles)
          , ("/new_user", with auth handleNewUser)
-         , ("/api/:path", with auth handleApi)
-         , ("/download/:path",  with auth handleDownload)
-         , ("/delete/:path",  with auth handleDelete)
-         , ("/move/:from/:to",  with auth handleMove)
-         , ("/copy/:from/:to",  with auth handleCopy)
-         , ("",          serveDirectory "static")
-         ]
+         , ("/copy/:from/:to", requireUser auth handleUnAuthorized handleCopy)--with auth handleCopy)
+         , ("/api/:path", requireUser auth handleUnAuthorized handleApi)
+         , ("/download/:path", requireUser auth handleUnAuthorized handleDownload)
+         , ("/delete/:path",  requireUser auth handleUnAuthorized handleDelete)
+         , ("/move/:from/:to", requireUser auth handleUnAuthorized handleMove)
+         , ("/upload", requireUser auth handleUnAuthorized handleFiles)
+         , ("",   serveDirectory "static")--heistLocal (I.bindSplices [("ifNoUserFile", (ifNoUserFile auth))]) (serveDirectory "static"))
+         -- , ("/", with auth (handleIndex))
+        ]
 
 
 ------------------------------------------------------------------------------
@@ -205,7 +243,9 @@ app = makeSnaplet "app" "An snaplet example application." Nothing $ do
     -- you'll probably want to change this to a more robust auth backend.
     a <- nestSnaplet "auth" auth $
            initJsonFileAuthManager defAuthSettings sess "users.json"
+    --addSplices [("ifNoUserFile", liftHeist ifNoUserFile)]
     addRoutes routes
+    wrapSite (\site -> ifTop (with auth (handleIndex)) <|> site ) 
     addAuthSplices h auth
     return $ App h s a
 
