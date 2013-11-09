@@ -13,7 +13,7 @@ define([
     });
 
     Main.Collection = Backbone.Collection.extend({
-        url: "http://oij.me:8000/api/%2F",
+        url: "/api/%2F",
         model: Main.Model
     });
 
@@ -129,7 +129,7 @@ define([
             this.collection.fetch({
                 success: function () {
                     that.collection.each(function (data, index) {
-                        data.set("url", "http://oij.me:8000/download/" + encodeURIComponent(data.get("value")));
+                        data.set("url", "/download/" + encodeURIComponent(data.get("value")));
                         if (data.get("type") === "directory") {
                             data.set("directory", true);
                         }
@@ -228,10 +228,10 @@ define([
         rerender: function () {
             var that = this;
             this.collection.fetch({
-                url: "http://oij.me:8000/api/" + encodeURIComponent(that.currentDirectory),
+                url: "/api/" + encodeURIComponent(that.currentDirectory),
                 success: function (data) {
                     that.collection.each(function (data, index) {
-                        data.set("url", "http://oij.me:8000/download/" + encodeURIComponent(data.get("value")));
+                        data.set("url", "/download/" + encodeURIComponent(data.get("value")));
                         if (data.get("type") === "directory") {
                             data.set("directory", true);
                         }
